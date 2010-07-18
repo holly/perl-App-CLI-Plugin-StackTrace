@@ -6,16 +6,16 @@ use Devel::StackTrace;
 use Fcntl qw(:DEFAULT :flock);
 
 our $CONTEXT_LINE   = 5;
-our @IGNORE_PACKAGE = ( __PACKAGE__, "Carp" );
-our $VERSION        = '1.0';
+our @IGNORE_PACKAGE = ( __PACKAGE__, "Carp", "Error::subs" );
+our $VERSION        = '1.1';
 
 sub setup {
 
 	my($self, @argv) = @_;
 
-    my $stacktrace = (exists $self->config->{stacktrace}) ? $self->config->{stacktrace} : undef;
+    my $stacktrace = (exists $self->config->{stacktrace}) ? $self->config->{stacktrace} : 0;
 
-	if ( (exists $stacktrace->{enable} && $stacktrace->{enable} != 0)                   ||
+	if ( (defined $stacktrace && $stacktrace != 0) ||
 		 (exists $ENV{APPCLI_STACKTRACE_ENABLE} && $ENV{APPCLI_STACKTRACE_ENABLE} != 0) ||
 		 (exists $self->{stacktrace} && defined $self->{stacktrace} && $self->{stacktrace} != 0)
 	) {
@@ -102,6 +102,10 @@ __END__
 
 App::CLI::Plugin::StackTrace - for App::CLI::Extension error stacktrace module
 
+=head1 VERSION
+
+1.1
+
 =head1 SYNOPSIS
 
   # MyApp.pm
@@ -113,7 +117,7 @@ App::CLI::Plugin::StackTrace - for App::CLI::Extension error stacktrace module
   # extension method
   __PACKAGE__->load_plugins(qw(StackTrace));
 
-  __PACKAGE__->config(stacktrace => { enable => 1 });
+  __PACKAGE__->config(stacktrace => 1);
   
   1;
   
@@ -134,7 +138,7 @@ App::CLI::Plugin::StackTrace - for App::CLI::Extension error stacktrace module
   sub fail {
   
       my($self, @args) = @_;
-	  print $self->errstr;
+	  print $self->e;
 	  $self->exit_value(1);
   }
   
@@ -150,79 +154,80 @@ App::CLI::Plugin::StackTrace - for App::CLI::Extension error stacktrace module
   [kurt@localhost ~] ./myapp hello
   MyApp::Hello
   
-    Illegal division by zero at /root/perl-work/lib/MyApp/Hello.pm line 12.
+    Illegal division by zero at lib/MyApp/Hello.pm line 17.
   
   
   ----------
-    MyApp::Hello at /root/perl-work/lib/MyApp/Hello.pm line 12.
+    MyApp::Hello at lib/MyApp/Hello.pm line 17.
   
-      00007: sub run {
-      00008: 
-      00009: 	my($self, @argv) = @_;
-      00010: 	my $x = 1;
-      00011: 	my $y = 0;
-    * 00012: 	my $res = $x / $y;
-      00013: }
-      00014: 
-      00015: sub fail {
-      00016: 
-      00017: 	my($self, @argv) = @_;
-  
-    ==========
-    App::CLI::Extension::Component::RunCommand at /usr/lib/perl5/site_perl/5.8.8/App/CLI/Extension/Component/RunCommand.pm line 32.
-  
-      00027: 	my($self, @argv) = @_;
-      00028: 
-      00029: 	eval {
-      00030: 		$self->setup(@argv);
-      00031: 		$self->prerun(@argv);
-    * 00032: 		$self->run(@argv);
-      00033: 		$self->postrun(@argv);
-      00034: 	};
-      00035: 	if ($@) {
-      00036: 		chomp(my $message = $@);
-      00037: 		$self->errstr($message);
+       00012: sub run {
+       00013:   
+       00014: 	my($self, @args) = @_;
+       00015: 	my $x = 1;
+       00016: 	my $y = 0;
+     * 00017: 	my $res = $x / $y;
+       00018: }
+       00019:   
+       00020: sub fail {
+       00021:  
+       00022: 	my($self, @args) = @_;
   
     ==========
-    App::CLI::Extension::Component::RunCommand at /usr/lib/perl5/site_perl/5.8.8/App/CLI/Extension/Component/RunCommand.pm line 29.
+    App::CLI::Extension::Component::RunCommand at /usr/lib/perl5/site_perl/5.8.8/App/CLI/Extension/Component/RunCommand.pm line 36.
   
-      00024: 
-      00025: sub run_command {
-      00026: 
-      00027: 	my($self, @argv) = @_;
-      00028: 
-    * 00029: 	eval {
-      00030: 		$self->setup(@argv);
-      00031: 		$self->prerun(@argv);
-      00032: 		$self->run(@argv);
-      00033: 		$self->postrun(@argv);
-      00034: 	};
-  
-    ==========
-    App::CLI::Extension at /usr/lib/perl5/site_perl/5.8.8/App/CLI/Extension.pm line 175.
-  
-      00170: 		unshift @{"$pkg\::ISA"}, @{$class->_components};
-      00171: 		unshift @{"$pkg\::ISA"}, @{$class->_plugins};
-      00172: 		$cmd->config($class->_config);
-      00173: 		$cmd->orig_argv($class->_orig_argv);
-      00174: 	}
-    * 00175: 	$cmd->run_command(@ARGV);
-      00176: }
-      00177: 
-      00178: ## I really does not want....
-      00179: sub error_cmd {
-      00180: 	"Command not recognized, try $0 help.\n";
+       00031: 
+       00032: 	try {
+       00033: 		$self->setup(@argv);
+       00034: 		$self->prerun(@argv);
+       00035: 		if ($self->finished == 0) {
+     * 00036: 			$self->run(@argv);
+       00037: 			$self->postrun(@argv);
+       00038: 		}
+       00039: 	}
+       00040: 	catch App::CLI::Extension::Exception with {
+       00041: 		# $self->e is App::CLI::Extension::Exception object. execute $self->throw($message)
   
     ==========
-    main at myapp.pl line 6.
+    App::CLI::Extension::Component::RunCommand at /usr/lib/perl5/site_perl/5.8.8/App/CLI/Extension/Component/RunCommand.pm line 54.
   
-      00001: #!/usr/bin/perl
-      00002: 
-      00003: use strict;
-      00004: use MyApp;
-      00005: 
-    * 00006: MyApp->dispatch;
-    
+       00049: 		$self->exit_value($FAIL_EXIT_VALUE);
+       00050: 		$self->fail(@argv);
+       00051: 	}
+       00052: 	finally {
+       00053: 		$self->finish(@argv);
+     * 00054: 	};
+       00055: 
+       00056: 	if (exists $ENV{APPCLI_NON_EXIT}) {
+       00057: 		no strict "refs";  ## no critic
+       00058: 		my $dispatch_pkg = $self->app;
+       00059: 		${"$dispatch_pkg\::EXIT_VALUE"} = $self->exit_value;
+  
+    ==========
+    App::CLI::Extension at /usr/lib/perl5/site_perl/5.8.8/App/CLI/Extension.pm line 179.
+  
+       00174: 			unshift @{"$pkg\::ISA"}, @{$class->_plugins};
+       00175: 		}
+       00176: 		$cmd->config($class->_config);
+       00177: 		$cmd->orig_argv($class->_orig_argv);
+       00178: 	}
+     * 00179: 	$cmd->run_command(@ARGV);
+       00180: }
+       00181: 
+       00182: ## I really does not want....
+       00183: sub error_cmd {
+       00184: 	"Command not recognized, try $0 help.\n";
+  
+    ==========
+    main at myapp line 7.
+  
+       00002: 
+       00003: use strict;
+       00004: use lib qw(./lib);
+       00005: use MyApp;
+       00006: 
+     * 00007: MyApp->dispatch;
+       00008: 
+  
     ==========
   ----------
 
@@ -241,7 +246,7 @@ If one is to enable the stacktrace is displayed when an error occurs. If enable 
 Example:
 
   # MyApp.pm
-  __PACKAGE__->config(stacktrace => { enable => 1 });
+  __PACKAGE__->config(stacktrace => 1);
 
 =head2 ENVIRON VARIABLE
 
@@ -272,7 +277,7 @@ Akira Horimoto
 
 =head1 SEE ALSO
 
-L<App::CLI::Extension>
+L<App::CLI::Extension> L<Devel::StackTrace>
 
 =head1 LICENSE
 
